@@ -1,0 +1,7 @@
+{
+  "name": "AI Readiness Check",
+  "description": "An interactive AI-powered voice anaylsis to assess your personal AI readiness. The conversation will be conducted via voice.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
