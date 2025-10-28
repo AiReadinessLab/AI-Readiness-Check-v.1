@@ -14,3 +14,5 @@ export interface Transcript {
   text: string;
   isFinal: boolean;
 }
+
+export type Language = 'en' | 'de';

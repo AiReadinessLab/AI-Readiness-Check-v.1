@@ -1,44 +1,77 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { InterviewState, Transcript } from './types';
+import { InterviewState, Transcript, Language } from './types';
 import { useLiveSession } from './hooks/useLiveSession';
 
-const Header: React.FC = () => (
+const UI_STRINGS = {
+  en: {
+    headerTitle: "AI Readiness Check",
+    headerSubtitle: "Your personal AI readiness assessor",
+    welcomeTitle: "Welcome!",
+    welcomeText: "Click the microphone button below to start your AI Readiness Check. The conversation will be conducted via voice.",
+    startCheck: "Start Check",
+    connecting: "Connecting...",
+    connectingText: "The AI assistant is preparing your check. This will just take a moment.",
+    statusInProgress: "Check in progress...",
+    statusPaused: "Check paused. Click the mic to resume.",
+    statusEnding: "Ending check...",
+    endCheck: "End Check",
+    errorText: "An error occurred. Please refresh and try again.",
+    finishedText: "Check Finished. Thank you!",
+    pauseCheckAria: "Pause Check",
+    resumeCheckAria: "Resume Check",
+  },
+  de: {
+    headerTitle: "KI-Bereitschafts-Check",
+    headerSubtitle: "Ihr persönlicher Assessor für KI-Bereitschaft",
+    welcomeTitle: "Willkommen!",
+    welcomeText: "Klicken Sie auf den Mikrofon-Button, um Ihren KI-Bereitschafts-Check zu starten. Das Gespräch wird per Sprache geführt.",
+    startCheck: "Check starten",
+    connecting: "Verbinde...",
+    connectingText: "Der KI-Assistent bereitet Ihren Check vor. Dies dauert nur einen Moment.",
+    statusInProgress: "Check läuft...",
+    statusPaused: "Check pausiert. Klicken Sie zum Fortfahren auf das Mikrofon.",
+    statusEnding: "Check wird beendet...",
+    endCheck: "Check beenden",
+    errorText: "Ein Fehler ist aufgetreten. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
+    finishedText: "Check beendet. Vielen Dank!",
+    pauseCheckAria: "Check pausieren",
+    resumeCheckAria: "Check fortsetzen",
+  },
+};
+
+const Header: React.FC<{ T: typeof UI_STRINGS['en'] }> = ({ T }) => (
   <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 shadow-md w-full">
     <div className="container mx-auto max-w-4xl text-center">
-      <h1 className="text-3xl font-bold tracking-tight">AI Readiness Check</h1>
-      <p className="mt-1 text-lg opacity-90">Your personal AI readiness assessor</p>
+      <h1 className="text-3xl font-bold tracking-tight">{T.headerTitle}</h1>
+      <p className="mt-1 text-lg opacity-90">{T.headerSubtitle}</p>
     </div>
   </header>
 );
 
-const WelcomeScreen: React.FC<{ onStart: () => void; state: InterviewState }> = ({ onStart, state }) => (
+const WelcomeScreen: React.FC<{ onStart: () => void; state: InterviewState; T: typeof UI_STRINGS['en'] }> = ({ onStart, state, T }) => (
   <div className="text-center flex flex-col items-center justify-center h-full p-8">
     <div className="text-6xl text-blue-500 mb-4">
       <i className="fa-regular fa-face-smile"></i>
     </div>
-    <h2 className="text-2xl font-semibold text-gray-800 mb-2">Welcome!</h2>
-    <p className="text-gray-600 max-w-md">
-      Click the microphone button below to start your AI Readiness Check. The conversation will be conducted via voice.
-    </p>
+    <h2 className="text-2xl font-semibold text-gray-800 mb-2">{T.welcomeTitle}</h2>
+    <p className="text-gray-600 max-w-md">{T.welcomeText}</p>
     <div className="mt-16">
-      <MicButton onClick={onStart} state={state} />
-      <p className="mt-4 text-gray-700 font-medium">Start Check</p>
+      <MicButton onClick={onStart} state={state} T={T} />
+      <p className="mt-4 text-gray-700 font-medium">{T.startCheck}</p>
     </div>
   </div>
 );
 
-const LoadingScreen: React.FC = () => (
+const LoadingScreen: React.FC<{ T: typeof UI_STRINGS['en'] }> = ({ T }) => (
   <div className="text-center flex flex-col items-center justify-center h-full p-8">
     <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-6"></div>
-    <h2 className="text-xl font-semibold text-gray-800">Connecting...</h2>
-    <p className="text-gray-600 mt-2 max-w-xs">
-      The AI assistant is preparing your check. This will just take a moment.
-    </p>
+    <h2 className="text-xl font-semibold text-gray-800">{T.connecting}</h2>
+    <p className="text-gray-600 mt-2 max-w-xs">{T.connectingText}</p>
   </div>
 );
 
 
-const InterviewScreen: React.FC<{ transcripts: Transcript[]; state: InterviewState; onTogglePause: () => void; onStop: () => void; }> = ({ transcripts, state, onTogglePause, onStop }) => {
+const InterviewScreen: React.FC<{ transcripts: Transcript[]; state: InterviewState; onTogglePause: () => void; onStop: () => void; T: typeof UI_STRINGS['en'] }> = ({ transcripts, state, onTogglePause, onStop, T }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,11 +83,11 @@ const InterviewScreen: React.FC<{ transcripts: Transcript[]; state: InterviewSta
   const getStatusText = () => {
     switch (state) {
         case InterviewState.IN_PROGRESS:
-            return "Check in progress...";
+            return T.statusInProgress;
         case InterviewState.PAUSED:
-            return "Check paused. Click the mic to resume.";
+            return T.statusPaused;
         case InterviewState.ENDING:
-            return "Ending check...";
+            return T.statusEnding;
         default:
             return "";
     }
@@ -82,13 +115,13 @@ const InterviewScreen: React.FC<{ transcripts: Transcript[]; state: InterviewSta
         ))}
       </div>
       <div className="p-8 border-t border-gray-200 bg-white flex flex-col items-center">
-        <MicButton onClick={onTogglePause} state={state} />
+        <MicButton onClick={onTogglePause} state={state} T={T} />
         <p className="mt-4 text-gray-700 font-medium h-6">
             {getStatusText()}
         </p>
         {(state === InterviewState.IN_PROGRESS || state === InterviewState.PAUSED) &&
              <button onClick={onStop} className="mt-2 text-sm font-semibold text-gray-500 hover:text-red-600 transition-colors">
-                 End Check
+                 {T.endCheck}
              </button>
         }
       </div>
@@ -97,7 +130,7 @@ const InterviewScreen: React.FC<{ transcripts: Transcript[]; state: InterviewSta
 };
 
 
-const MicButton: React.FC<{ onClick: () => void; state: InterviewState }> = ({ onClick, state }) => {
+const MicButton: React.FC<{ onClick: () => void; state: InterviewState, T: typeof UI_STRINGS['en'] }> = ({ onClick, state, T }) => {
   const isStarting = state === InterviewState.STARTING;
   const isDisabled = isStarting || state === InterviewState.ENDING || state === InterviewState.FINISHED || state === InterviewState.ERROR;
 
@@ -123,7 +156,7 @@ const MicButton: React.FC<{ onClick: () => void; state: InterviewState }> = ({ o
       onClick={onClick}
       disabled={isDisabled}
       className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ease-in-out shadow-lg focus:outline-none focus:ring-4 focus:ring-opacity-50 text-white ${color} ${pulse ? 'animate-pulse' : ''}`}
-      aria-label={state === InterviewState.IN_PROGRESS ? 'Pause Check' : 'Resume Check'}
+      aria-label={state === InterviewState.IN_PROGRESS ? T.pauseCheckAria : T.resumeCheckAria}
     >
       <i className={`fa-solid ${icon} text-3xl`}></i>
     </button>
@@ -133,8 +166,23 @@ const MicButton: React.FC<{ onClick: () => void; state: InterviewState }> = ({ o
 const App: React.FC = () => {
   const [interviewState, setInterviewState] = useState<InterviewState>(InterviewState.NOT_STARTED);
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [language, setLanguage] = useState<Language>('en');
   const userTranscriptRef = useRef<string>('');
   const aiTranscriptRef = useRef<string>('');
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const lang = params.get('lang');
+    if (lang === 'de') {
+      setLanguage('de');
+      document.documentElement.lang = 'de';
+    } else {
+      setLanguage('en');
+      document.documentElement.lang = 'en';
+    }
+  }, []);
+
+  const T = UI_STRINGS[language];
 
   const handleStateChange = useCallback((newState: InterviewState) => {
     setInterviewState(newState);
@@ -188,6 +236,7 @@ const App: React.FC = () => {
   const { startSession, endSession, pauseSession, resumeSession } = useLiveSession({
     onUpdate: handleUpdate,
     onStateChange: handleStateChange,
+    language: language,
   });
 
   const handleTogglePause = () => {
@@ -200,26 +249,26 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (interviewState === InterviewState.ERROR) {
-      return <div className="text-center p-8 text-red-500">An error occurred. Please refresh and try again.</div>;
+      return <div className="text-center p-8 text-red-500">{T.errorText}</div>;
     }
     if (interviewState === InterviewState.FINISHED) {
-      return <div className="text-center p-8 text-green-500 text-lg font-semibold">Check Finished. Thank you!</div>;
+      return <div className="text-center p-8 text-green-500 text-lg font-semibold">{T.finishedText}</div>;
     }
 
     if (interviewState === InterviewState.NOT_STARTED) {
-      return <WelcomeScreen onStart={startSession} state={interviewState} />;
+      return <WelcomeScreen onStart={startSession} state={interviewState} T={T} />;
     }
     
     if (interviewState === InterviewState.STARTING) {
-        return <LoadingScreen />;
+        return <LoadingScreen T={T} />;
     }
 
-    return <InterviewScreen transcripts={transcripts} state={interviewState} onTogglePause={handleTogglePause} onStop={endSession} />;
+    return <InterviewScreen transcripts={transcripts} state={interviewState} onTogglePause={handleTogglePause} onStop={endSession} T={T} />;
   };
 
   return (
     <div className="flex flex-col items-center h-screen bg-gray-100 font-sans">
-      <Header />
+      <Header T={T} />
       <main className="container mx-auto max-w-4xl flex-grow w-full p-4 md:p-8">
         <div className="bg-white rounded-xl shadow-lg h-full overflow-hidden flex flex-col">
           {renderContent()}
