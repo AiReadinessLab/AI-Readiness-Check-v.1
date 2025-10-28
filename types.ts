@@ -16,3 +16,5 @@ export interface Transcript {
 }
 
 export type Language = 'en' | 'de';
+
+export type InputMode = 'voice' | 'text';

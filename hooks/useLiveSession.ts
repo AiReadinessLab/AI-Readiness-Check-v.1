@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { useCallback, useRef, useState } from "react";
 import { InterviewState, Language } from "../types";
@@ -120,7 +121,7 @@ Stelle Fragen zu:
 Abschluss:
 Nach dem letzten Abschnitt, bedanke dich beim Nutzer für seine Zeit und schließe den Check ab. Zum Beispiel: "Das sind alle Fragen, die ich habe. Vielen Dank für Ihre Zeit und dafür, dass Sie Ihre Gedanken geteilt haben. Hiermit ist Ihr KI-Bereitschafts-Check abgeschlossen."
 Versuche nicht, die Antworten des Nutzers während des Gesprächs zu bewerten oder zu analysieren. Führe einfach nur den Check durch.
-Beginne das Gespräch, indem du dich und den Zweck des Checks vorstellst. Zum Beispiel: "Hallo! Ich bin Ihr persönlicher Assessor für KI-Bereitschaft. Ich werde Sie durch ein kurzes, sprachbasiertes Gespräch führen, um Ihre Perspektive auf KI zu erkunden. Sollen wir anfangen?"
+Beginne das Gespräch, indem du dich und den Zweck des Checks vorstellst. Zum Beispiel: "Hallo! Ich bin Ihr persönlicher Berater für KI-Bereitschaft. Ich werde Sie durch ein kurzes, sprachbasiertes Gespräch führen, um Ihre Perspektive auf KI zu erkunden. Sollen wir anfangen?"
 `;
 
 const SYSTEM_INSTRUCTIONS = {
@@ -131,10 +132,12 @@ const SYSTEM_INSTRUCTIONS = {
 export function useLiveSession({
   onUpdate,
   onStateChange,
+  onError,
   language,
 }: {
   onUpdate: (transcript: string, isFinal: boolean, source: 'user' | 'ai') => void;
   onStateChange: (state: InterviewState) => void;
+  onError: (message: string) => void;
   language: Language;
 }) {
   const [session, setSession] = useState<any | null>(null);
@@ -145,7 +148,9 @@ export function useLiveSession({
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const outputGainNodeRef = useRef<GainNode | null>(null);
   const isPausedRef = useRef(false);
+  const isMicrophoneMutedRef = useRef(false);
   const sessionStartedRef = useRef(false);
+  const errorOccurredRef = useRef(false);
   const nextStartTimeRef = useRef(0);
   const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const userTranscriptRef = useRef('');
@@ -188,7 +193,9 @@ export function useLiveSession({
   const startSession = useCallback(async () => {
     onStateChange(InterviewState.STARTING);
     isPausedRef.current = false;
+    isMicrophoneMutedRef.current = false;
     sessionStartedRef.current = false;
+    errorOccurredRef.current = false;
     try {
       if (!process.env.API_KEY) {
         throw new Error("API_KEY environment variable not set");
@@ -219,7 +226,7 @@ export function useLiveSession({
             scriptProcessorRef.current = scriptProcessor;
 
             scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-              if (isPausedRef.current) return;
+              if (isPausedRef.current || isMicrophoneMutedRef.current) return;
 
               const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
               const l = inputData.length;
@@ -300,10 +307,15 @@ export function useLiveSession({
           },
           onerror: (e: ErrorEvent) => {
             console.error('Session error:', e);
-            onStateChange(InterviewState.ERROR);
+            errorOccurredRef.current = true;
+            const errorMessage = (e.error as Error)?.message || e.message || 'An unknown session error occurred.';
+            onError(errorMessage);
           },
-          onclose: () => {
-            onStateChange(InterviewState.FINISHED);
+          // FIX: The onclose callback expects a CloseEvent argument. While TypeScript allows omitting it if unused, some underlying implementations might check function arity, causing an error.
+          onclose: (_e: CloseEvent) => {
+             if (!errorOccurredRef.current) {
+                onStateChange(InterviewState.FINISHED);
+            }
           },
         },
       });
@@ -322,9 +334,11 @@ export function useLiveSession({
 
     } catch (error) {
       console.error('Failed to start session:', error);
-      onStateChange(InterviewState.ERROR);
+      errorOccurredRef.current = true;
+      const errorMessage = (error as Error)?.message || 'Failed to start session.';
+      onError(errorMessage);
     }
-  }, [onStateChange, onUpdate, processTextQueue, language]);
+  }, [onStateChange, onUpdate, processTextQueue, language, onError]);
   
   const pauseSession = useCallback(() => {
     isPausedRef.current = true;
@@ -342,10 +356,30 @@ export function useLiveSession({
     onStateChange(InterviewState.IN_PROGRESS);
   }, [onStateChange]);
 
+  const muteMicrophone = useCallback(() => {
+    isMicrophoneMutedRef.current = true;
+  }, []);
+
+  const unmuteMicrophone = useCallback(() => {
+    isMicrophoneMutedRef.current = false;
+  }, []);
+
+  const muteSpeaker = useCallback(() => {
+    if (outputGainNodeRef.current && outputAudioContextRef.current) {
+        outputGainNodeRef.current.gain.setValueAtTime(0, outputAudioContextRef.current.currentTime);
+    }
+  }, []);
+
+  const unmuteSpeaker = useCallback(() => {
+    if (outputGainNodeRef.current && outputAudioContextRef.current) {
+        outputGainNodeRef.current.gain.setValueAtTime(1, outputAudioContextRef.current.currentTime);
+    }
+  }, []);
 
   const endSession = useCallback(() => {
     onStateChange(InterviewState.ENDING);
     isPausedRef.current = false;
+    isMicrophoneMutedRef.current = false;
     if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
     }
@@ -362,8 +396,16 @@ export function useLiveSession({
 
     session?.close();
     setSession(null);
-    onStateChange(InterviewState.FINISHED);
+    if (!errorOccurredRef.current) {
+      onStateChange(InterviewState.FINISHED);
+    }
   }, [session, onStateChange]);
+  
+  const sendTextMessage = useCallback(async (message: string) => {
+    if (session) {
+      session.sendRealtimeInput({ text: message });
+    }
+  }, [session]);
 
-  return { startSession, endSession, pauseSession, resumeSession };
+  return { startSession, endSession, pauseSession, resumeSession, sendTextMessage, muteMicrophone, unmuteMicrophone, muteSpeaker, unmuteSpeaker };
 }
