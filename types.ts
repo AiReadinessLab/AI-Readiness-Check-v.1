@@ -1,6 +1,7 @@
 
 export enum InterviewState {
   NOT_STARTED,
+  PRE_INTERVIEW,
   STARTING,
   IN_PROGRESS,
   PAUSED,

@@ -134,13 +134,11 @@ export function useLiveSession({
   onStateChange,
   onError,
   language,
-  isSpeakerMuted,
 }: {
   onUpdate: (transcript: string, isFinal: boolean, source: 'user' | 'ai') => void;
   onStateChange: (state: InterviewState) => void;
   onError: (message: string) => void;
   language: Language;
-  isSpeakerMuted: boolean;
 }) {
   const [session, setSession] = useState<any | null>(null);
   const aiRef = useRef<GoogleGenAI | null>(null);
@@ -151,7 +149,7 @@ export function useLiveSession({
   const outputGainNodeRef = useRef<GainNode | null>(null);
   const isPausedRef = useRef(false);
   const isMicrophoneMutedRef = useRef(false);
-  const isSpeakerMutedRef = useRef(isSpeakerMuted);
+  const isSpeakerMutedRef = useRef(false);
   const sessionStartedRef = useRef(false);
   const errorOccurredRef = useRef(false);
   const nextStartTimeRef = useRef(0);
@@ -162,45 +160,18 @@ export function useLiveSession({
   const aiTextChunkQueue = useRef<string[]>([]);
   const scheduledTextQueue = useRef<{ text: string; displayTime: number }[]>([]);
   const scheduledFinalizeTime = useRef<number | null>(null);
-  // FIX: Initialize useRef with null to provide an initial value, addressing the "Expected 1 arguments, but got 0" error.
   const animationFrameRef = useRef<number | null>(null);
-  const nextReadDisplayTimeRef = useRef(0);
-
-  useEffect(() => {
-    isSpeakerMutedRef.current = isSpeakerMuted;
-  }, [isSpeakerMuted]);
-
+  
   const processTextQueue = useCallback(() => {
     if (outputAudioContextRef.current) {
         const currentTime = outputAudioContextRef.current.currentTime;
         let didUpdate = false;
         
-        if (isSpeakerMutedRef.current) {
-            // When muted, display text at a calculated reading speed.
-            // Ensure the display time doesn't get stuck in the past.
-            nextReadDisplayTimeRef.current = Math.max(nextReadDisplayTimeRef.current, currentTime);
-
-            if (scheduledTextQueue.current.length > 0 && currentTime >= nextReadDisplayTimeRef.current) {
-                const item = scheduledTextQueue.current.shift();
-                if (item) {
-                    aiTranscriptRef.current += item.text;
-                    didUpdate = true;
-
-                    // Calculate delay for the next chunk based on text length to simulate reading speed.
-                    // A quick reading pace of ~400 WPM is ~6.7 words/sec. A word is ~5 chars.
-                    // This is ~33 chars/sec, or 30ms per character.
-                    const delayInSeconds = 0.1 + (item.text.length * 0.03); // 100ms base + 30ms per character.
-                    nextReadDisplayTimeRef.current = currentTime + delayInSeconds;
-                }
-            }
-        } else {
-            // When not muted, sync text with audio playback time.
-            while (scheduledTextQueue.current.length > 0 && scheduledTextQueue.current[0].displayTime <= currentTime) {
-                const item = scheduledTextQueue.current.shift();
-                if (item) {
-                    aiTranscriptRef.current += item.text;
-                    didUpdate = true;
-                }
+        while (scheduledTextQueue.current.length > 0 && scheduledTextQueue.current[0].displayTime <= currentTime) {
+            const item = scheduledTextQueue.current.shift();
+            if (item) {
+                aiTranscriptRef.current += item.text;
+                didUpdate = true;
             }
         }
 
@@ -211,19 +182,8 @@ export function useLiveSession({
         const isTurnComplete = !!scheduledFinalizeTime.current;
         let shouldFinalize = false;
 
-        // Check if the turn is complete and all text chunks have been processed.
-        if (isTurnComplete && scheduledTextQueue.current.length === 0) {
-            if (isSpeakerMutedRef.current) {
-                // In muted mode, finalize once the AI transcript has content and all text is displayed.
-                if(aiTranscriptRef.current) {
-                    shouldFinalize = true;
-                }
-            } else {
-                // In normal mode, finalize when the audio playback is scheduled to be complete.
-                if (scheduledFinalizeTime.current && scheduledFinalizeTime.current <= currentTime) {
-                    shouldFinalize = true;
-                }
-            }
+        if (isTurnComplete && scheduledTextQueue.current.length === 0 && scheduledFinalizeTime.current && scheduledFinalizeTime.current <= currentTime) {
+            shouldFinalize = true;
         }
         
         if (shouldFinalize) {
@@ -233,7 +193,6 @@ export function useLiveSession({
             userTranscriptRef.current = '';
             aiTranscriptRef.current = '';
             scheduledFinalizeTime.current = null;
-            // Clear any lingering text chunks to prevent them from appearing in the next turn
             aiTextChunkQueue.current = [];
         }
     }
@@ -241,10 +200,11 @@ export function useLiveSession({
   }, [onUpdate]);
 
 
-  const startSession = useCallback(async () => {
+  const startSession = useCallback(async ({ initialMicMuted, initialSpeakerMuted }: { initialMicMuted: boolean; initialSpeakerMuted: boolean; }) => {
     onStateChange(InterviewState.STARTING);
     isPausedRef.current = false;
-    isMicrophoneMutedRef.current = false;
+    isMicrophoneMutedRef.current = initialMicMuted;
+    isSpeakerMutedRef.current = initialSpeakerMuted;
     sessionStartedRef.current = false;
     errorOccurredRef.current = false;
     try {
@@ -320,30 +280,35 @@ export function useLiveSession({
         
             const interrupted = message.serverContent?.interrupted;
             if (interrupted) {
+              // Stop all audio playback
               for (const source of audioSourcesRef.current.values()) {
                 source.stop(0);
                 audioSourcesRef.current.delete(source);
               }
               nextStartTimeRef.current = 0;
+
+              // Clear future text/audio processing queues
               aiTextChunkQueue.current = [];
               scheduledTextQueue.current = [];
               scheduledFinalizeTime.current = null;
+              
+              // Finalize the current AI text with an interruption marker, if it exists
+              if (aiTranscriptRef.current.trim()) {
+                aiTranscriptRef.current += '...';
+                onUpdate(aiTranscriptRef.current, true, 'ai');
+              }
+
+              // Reset transcript refs for the new turn.
+              // This preserves the last AI message (by finalizing it above)
+              // and clears the user's message to prevent duplication.
+              aiTranscriptRef.current = '';
+              userTranscriptRef.current = '';
             }
         
             if (base64Audio) {
               const outputAudioContext = outputAudioContextRef.current;
               if (!outputAudioContext || !outputGainNodeRef.current) return;
         
-              // If the speaker is muted, we don't process or queue the audio
-              if (isSpeakerMutedRef.current) {
-                  const textChunk = aiTextChunkQueue.current.shift();
-                  if (textChunk) {
-                      // We still need to schedule the text for reading display
-                      scheduledTextQueue.current.push({ text: textChunk, displayTime: 0 }); // displayTime is not used in muted mode
-                  }
-                  return; // Skip audio processing
-              }
-
               const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
               const currentTime = outputAudioContext.currentTime;
               const nextStartTime = Math.max(nextStartTimeRef.current, currentTime);
@@ -386,6 +351,9 @@ export function useLiveSession({
       outputAudioContextRef.current = outputAudioContext;
 
       const gainNode = outputAudioContext.createGain();
+      if (initialSpeakerMuted) {
+          gainNode.gain.setValueAtTime(0, outputAudioContext.currentTime);
+      }
       gainNode.connect(outputAudioContext.destination);
       outputGainNodeRef.current = gainNode;
       
@@ -425,21 +393,16 @@ export function useLiveSession({
   }, []);
 
   const muteSpeaker = useCallback(() => {
+    isSpeakerMutedRef.current = true;
     if (outputGainNodeRef.current && outputAudioContextRef.current) {
-        outputGainNodeRef.current.gain.setValueAtTime(0, outputAudioContextRef.current.currentTime);
+        outputGainNodeRef.current.gain.linearRampToValueAtTime(0, outputAudioContextRef.current.currentTime + 0.1);
     }
   }, []);
 
   const unmuteSpeaker = useCallback(() => {
+    isSpeakerMutedRef.current = false;
     if (outputGainNodeRef.current && outputAudioContextRef.current) {
-        outputGainNodeRef.current.gain.setValueAtTime(1, outputAudioContextRef.current.currentTime);
-        // Clear out any pending audio that was queued while muted to prevent "catching up"
-        for (const source of audioSourcesRef.current.values()) {
-            source.stop(0);
-            audioSourcesRef.current.delete(source);
-        }
-        // Reset the start time to the current time to ensure new audio plays immediately
-        nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
+        outputGainNodeRef.current.gain.linearRampToValueAtTime(1, outputAudioContextRef.current.currentTime + 0.1);
     }
   }, []);
 
@@ -457,8 +420,6 @@ export function useLiveSession({
     if (outputGainNodeRef.current && outputAudioContextRef.current) {
       outputGainNodeRef.current.gain.setValueAtTime(0, outputAudioContextRef.current.currentTime);
     }
-    // FIX: Explicitly pass 0 to stop() to prevent errors in older browsers
-    // that may not handle the optional 'when' parameter correctly.
     audioSourcesRef.current.forEach(source => source.stop(0));
     audioSourcesRef.current.clear();
     outputAudioContextRef.current?.close().catch(console.error);
@@ -472,9 +433,36 @@ export function useLiveSession({
   
   const sendTextMessage = useCallback(async (message: string) => {
     if (session) {
+      // Interruption check: Is the AI currently generating a response?
+      if (aiTranscriptRef.current.trim()) {
+        // Stop any playing/scheduled audio immediately
+        for (const source of audioSourcesRef.current.values()) {
+          source.stop(0);
+          audioSourcesRef.current.delete(source);
+        }
+        nextStartTimeRef.current = 0;
+
+        // Clear any pending text/audio processing queues
+        aiTextChunkQueue.current = [];
+        scheduledTextQueue.current = [];
+        scheduledFinalizeTime.current = null;
+        
+        // Finalize the AI's current partial response with an interruption marker
+        aiTranscriptRef.current += '...';
+        onUpdate(aiTranscriptRef.current, true, 'ai');
+      }
+
+      // Reset transcript refs to ensure a clean state for the new turn
+      aiTranscriptRef.current = '';
+      userTranscriptRef.current = '';
+
+      // Now, add the user's new message to the display by calling the update handler
+      onUpdate(message, true, 'user');
+      
+      // Finally, send the user's message to the AI to get a new response
       session.sendRealtimeInput({ text: message });
     }
-  }, [session]);
+  }, [session, onUpdate]);
 
   return { startSession, endSession, pauseSession, resumeSession, sendTextMessage, muteMicrophone, unmuteMicrophone, muteSpeaker, unmuteSpeaker };
 }
