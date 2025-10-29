@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { InterviewState, Language } from "../types";
 
 // --- Audio Utility Functions ---
@@ -134,11 +134,13 @@ export function useLiveSession({
   onStateChange,
   onError,
   language,
+  isSpeakerMuted,
 }: {
   onUpdate: (transcript: string, isFinal: boolean, source: 'user' | 'ai') => void;
   onStateChange: (state: InterviewState) => void;
   onError: (message: string) => void;
   language: Language;
+  isSpeakerMuted: boolean;
 }) {
   const [session, setSession] = useState<any | null>(null);
   const aiRef = useRef<GoogleGenAI | null>(null);
@@ -149,6 +151,7 @@ export function useLiveSession({
   const outputGainNodeRef = useRef<GainNode | null>(null);
   const isPausedRef = useRef(false);
   const isMicrophoneMutedRef = useRef(false);
+  const isSpeakerMutedRef = useRef(isSpeakerMuted);
   const sessionStartedRef = useRef(false);
   const errorOccurredRef = useRef(false);
   const nextStartTimeRef = useRef(0);
@@ -159,31 +162,79 @@ export function useLiveSession({
   const aiTextChunkQueue = useRef<string[]>([]);
   const scheduledTextQueue = useRef<{ text: string; displayTime: number }[]>([]);
   const scheduledFinalizeTime = useRef<number | null>(null);
-  const animationFrameRef = useRef<number>();
+  // FIX: Initialize useRef with null to provide an initial value, addressing the "Expected 1 arguments, but got 0" error.
+  const animationFrameRef = useRef<number | null>(null);
+  const nextReadDisplayTimeRef = useRef(0);
+
+  useEffect(() => {
+    isSpeakerMutedRef.current = isSpeakerMuted;
+  }, [isSpeakerMuted]);
 
   const processTextQueue = useCallback(() => {
     if (outputAudioContextRef.current) {
         const currentTime = outputAudioContextRef.current.currentTime;
         let didUpdate = false;
         
-        while (scheduledTextQueue.current.length > 0 && scheduledTextQueue.current[0].displayTime <= currentTime) {
-            const item = scheduledTextQueue.current.shift();
-            if (item) {
-                aiTranscriptRef.current += item.text;
-                didUpdate = true;
+        if (isSpeakerMutedRef.current) {
+            // When muted, display text at a calculated reading speed.
+            // Ensure the display time doesn't get stuck in the past.
+            nextReadDisplayTimeRef.current = Math.max(nextReadDisplayTimeRef.current, currentTime);
+
+            if (scheduledTextQueue.current.length > 0 && currentTime >= nextReadDisplayTimeRef.current) {
+                const item = scheduledTextQueue.current.shift();
+                if (item) {
+                    aiTranscriptRef.current += item.text;
+                    didUpdate = true;
+
+                    // Calculate delay for the next chunk based on text length to simulate reading speed.
+                    // A quick reading pace of ~400 WPM is ~6.7 words/sec. A word is ~5 chars.
+                    // This is ~33 chars/sec, or 30ms per character.
+                    const delayInSeconds = 0.1 + (item.text.length * 0.03); // 100ms base + 30ms per character.
+                    nextReadDisplayTimeRef.current = currentTime + delayInSeconds;
+                }
+            }
+        } else {
+            // When not muted, sync text with audio playback time.
+            while (scheduledTextQueue.current.length > 0 && scheduledTextQueue.current[0].displayTime <= currentTime) {
+                const item = scheduledTextQueue.current.shift();
+                if (item) {
+                    aiTranscriptRef.current += item.text;
+                    didUpdate = true;
+                }
             }
         }
+
         if (didUpdate) {
             onUpdate(aiTranscriptRef.current, false, 'ai');
         }
 
-        if (scheduledFinalizeTime.current && scheduledFinalizeTime.current <= currentTime) {
+        const isTurnComplete = !!scheduledFinalizeTime.current;
+        let shouldFinalize = false;
+
+        // Check if the turn is complete and all text chunks have been processed.
+        if (isTurnComplete && scheduledTextQueue.current.length === 0) {
+            if (isSpeakerMutedRef.current) {
+                // In muted mode, finalize once the AI transcript has content and all text is displayed.
+                if(aiTranscriptRef.current) {
+                    shouldFinalize = true;
+                }
+            } else {
+                // In normal mode, finalize when the audio playback is scheduled to be complete.
+                if (scheduledFinalizeTime.current && scheduledFinalizeTime.current <= currentTime) {
+                    shouldFinalize = true;
+                }
+            }
+        }
+        
+        if (shouldFinalize) {
             if (aiTranscriptRef.current) {
                 onUpdate(aiTranscriptRef.current, true, 'ai');
             }
             userTranscriptRef.current = '';
             aiTranscriptRef.current = '';
             scheduledFinalizeTime.current = null;
+            // Clear any lingering text chunks to prevent them from appearing in the next turn
+            aiTextChunkQueue.current = [];
         }
     }
     animationFrameRef.current = requestAnimationFrame(processTextQueue);
@@ -226,7 +277,7 @@ export function useLiveSession({
             scriptProcessorRef.current = scriptProcessor;
 
             scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-              if (isPausedRef.current || isMicrophoneMutedRef.current) return;
+              if (!sessionStartedRef.current || isPausedRef.current || isMicrophoneMutedRef.current) return;
 
               const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
               const l = inputData.length;
@@ -270,7 +321,7 @@ export function useLiveSession({
             const interrupted = message.serverContent?.interrupted;
             if (interrupted) {
               for (const source of audioSourcesRef.current.values()) {
-                source.stop();
+                source.stop(0);
                 audioSourcesRef.current.delete(source);
               }
               nextStartTimeRef.current = 0;
@@ -283,6 +334,16 @@ export function useLiveSession({
               const outputAudioContext = outputAudioContextRef.current;
               if (!outputAudioContext || !outputGainNodeRef.current) return;
         
+              // If the speaker is muted, we don't process or queue the audio
+              if (isSpeakerMutedRef.current) {
+                  const textChunk = aiTextChunkQueue.current.shift();
+                  if (textChunk) {
+                      // We still need to schedule the text for reading display
+                      scheduledTextQueue.current.push({ text: textChunk, displayTime: 0 }); // displayTime is not used in muted mode
+                  }
+                  return; // Skip audio processing
+              }
+
               const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
               const currentTime = outputAudioContext.currentTime;
               const nextStartTime = Math.max(nextStartTimeRef.current, currentTime);
@@ -311,8 +372,7 @@ export function useLiveSession({
             const errorMessage = (e.error as Error)?.message || e.message || 'An unknown session error occurred.';
             onError(errorMessage);
           },
-          // FIX: The onclose callback expects a CloseEvent argument. While TypeScript allows omitting it if unused, some underlying implementations might check function arity, causing an error.
-          onclose: (_e: CloseEvent) => {
+          onclose: () => {
              if (!errorOccurredRef.current) {
                 onStateChange(InterviewState.FINISHED);
             }
@@ -373,6 +433,13 @@ export function useLiveSession({
   const unmuteSpeaker = useCallback(() => {
     if (outputGainNodeRef.current && outputAudioContextRef.current) {
         outputGainNodeRef.current.gain.setValueAtTime(1, outputAudioContextRef.current.currentTime);
+        // Clear out any pending audio that was queued while muted to prevent "catching up"
+        for (const source of audioSourcesRef.current.values()) {
+            source.stop(0);
+            audioSourcesRef.current.delete(source);
+        }
+        // Reset the start time to the current time to ensure new audio plays immediately
+        nextStartTimeRef.current = outputAudioContextRef.current.currentTime;
     }
   }, []);
 
@@ -390,7 +457,9 @@ export function useLiveSession({
     if (outputGainNodeRef.current && outputAudioContextRef.current) {
       outputGainNodeRef.current.gain.setValueAtTime(0, outputAudioContextRef.current.currentTime);
     }
-    audioSourcesRef.current.forEach(source => source.stop());
+    // FIX: Explicitly pass 0 to stop() to prevent errors in older browsers
+    // that may not handle the optional 'when' parameter correctly.
+    audioSourcesRef.current.forEach(source => source.stop(0));
     audioSourcesRef.current.clear();
     outputAudioContextRef.current?.close().catch(console.error);
 

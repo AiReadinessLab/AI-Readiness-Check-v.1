@@ -230,32 +230,30 @@ const InterviewScreen: React.FC<{
             </p>
           </div>
         ) : (
-          <div className="flex flex-col items-center">
-            <form onSubmit={onSendText} className="w-full flex items-center gap-2">
-              <button type="button" onClick={onToggleSpeakerMute} disabled={isPaused} aria-label={isSpeakerMuted ? T.unmuteSpeakerAria : T.muteSpeakerAria} className={`${isSpeakerDisplayedAsMuted ? 'text-red-500' : 'text-gray-500'} ${!isPaused && (isSpeakerMuted ? 'hover:text-red-600' : 'hover:text-blue-600')} disabled:opacity-50 transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0`}>
-                  <i className={`fa-solid ${isSpeakerDisplayedAsMuted ? 'fa-volume-xmark' : 'fa-volume-high'} text-xl`}></i>
-              </button>
-              <button type="button" onClick={onSwitchToVoice} disabled={isPaused} aria-label={T.switchToVoiceModeAria} className="text-gray-500 hover:text-blue-600 disabled:opacity-50 transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0">
-                  <i className="fa-solid fa-microphone text-xl"></i>
-              </button>
-              {(state === InterviewState.PAUSED || state === InterviewState.IN_PROGRESS) &&
-                  <button type="button" onClick={onTogglePause} aria-label={state === InterviewState.PAUSED ? T.resumeCheckAria : T.pauseCheckAria} className={`transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0 ${state === InterviewState.PAUSED ? 'text-blue-500 hover:text-blue-600' : 'text-yellow-500 hover:text-yellow-600'}`}>
-                      <i className={`fa-solid ${state === InterviewState.PAUSED ? 'fa-play' : 'fa-pause'} text-xl`}></i>
-                  </button>
-              }
-              <input
-                type="text"
-                value={textInputValue}
-                onChange={onTextInputChange}
-                placeholder={T.textInputPlaceholder}
-                className="flex-grow border border-gray-300 rounded-full h-12 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label={T.textInputPlaceholder}
-              />
-              <button type="submit" disabled={!textInputValue.trim() || state === InterviewState.PAUSED} aria-label={T.sendAria} className="bg-blue-500 text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 disabled:bg-gray-400 transition-colors">
-                <i className="fa-solid fa-paper-plane"></i>
-              </button>
-            </form>
-          </div>
+          <form onSubmit={onSendText} className="w-full flex items-center gap-2">
+            <button type="button" onClick={onToggleSpeakerMute} disabled={isPaused} aria-label={isSpeakerMuted ? T.unmuteSpeakerAria : T.muteSpeakerAria} className={`${isSpeakerDisplayedAsMuted ? 'text-red-500' : 'text-gray-500'} ${!isPaused && (isSpeakerMuted ? 'hover:text-red-600' : 'hover:text-blue-600')} disabled:opacity-50 transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0`}>
+                <i className={`fa-solid ${isSpeakerDisplayedAsMuted ? 'fa-volume-xmark' : 'fa-volume-high'} text-xl`}></i>
+            </button>
+            <button type="button" onClick={onSwitchToVoice} disabled={isPaused} aria-label={T.switchToVoiceModeAria} className="text-gray-500 hover:text-blue-600 disabled:opacity-50 transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0">
+                <i className="fa-solid fa-comment text-xl"></i>
+            </button>
+            {(state === InterviewState.PAUSED || state === InterviewState.IN_PROGRESS) &&
+                <button type="button" onClick={onTogglePause} aria-label={state === InterviewState.PAUSED ? T.resumeCheckAria : T.pauseCheckAria} className={`transition-colors w-12 h-12 flex items-center justify-center rounded-full flex-shrink-0 ${state === InterviewState.PAUSED ? 'text-blue-500 hover:text-blue-600' : 'text-yellow-500 hover:text-yellow-600'}`}>
+                    <i className={`fa-solid ${state === InterviewState.PAUSED ? 'fa-play' : 'fa-pause'} text-xl`}></i>
+                </button>
+            }
+            <input
+              type="text"
+              value={textInputValue}
+              onChange={onTextInputChange}
+              placeholder={T.textInputPlaceholder}
+              className="flex-grow border border-gray-300 rounded-full h-12 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label={T.textInputPlaceholder}
+            />
+            <button type="submit" disabled={!textInputValue.trim() || state === InterviewState.PAUSED} aria-label={T.sendAria} className="bg-blue-500 text-white rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0 disabled:bg-gray-400 transition-colors">
+              <i className="fa-solid fa-paper-plane"></i>
+            </button>
+          </form>
         )}
       </div>
     </div>
@@ -389,6 +387,7 @@ const App: React.FC = () => {
     onStateChange: handleStateChange,
     onError: handleError,
     language: language,
+    isSpeakerMuted: isSpeakerMuted,
   });
 
   const handleTogglePause = () => {
