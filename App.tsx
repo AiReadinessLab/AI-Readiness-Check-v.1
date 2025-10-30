@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { InterviewState, Transcript, Language, InputMode } from './types';
 import { useLiveSession } from './hooks/useLiveSession';
@@ -8,12 +9,14 @@ const UI_STRINGS = {
     headerTitle: "AI Readiness Check",
     headerSubtitle: "Your personal AI readiness assessor",
     welcomeTitle: "Welcome!",
-    welcomeText: "Click the button below to start your AI Readiness Check. You can use your voice or type your answers.",
+    welcomeText: "Click the button below to start your AI Readiness Check. This interview will take approximately 15 minutes. You can use your voice or type your answers.",
     startCheck: "Start Check",
+    continueCheck: "Continue Check",
+    startNewCheck: "Start New Check",
     connecting: "Connecting...",
     connectingText: "The AI assistant is preparing your check. This will just take a moment.",
     statusInProgress: "Check in progress...",
-    statusPaused: "Interview Paused",
+    statusPaused: "Check Paused",
     statusMuted: "Audio muted.",
     statusMicrophoneMuted: "Microphone muted.",
     statusSpeakerMuted: "Speaker muted.",
@@ -36,32 +39,34 @@ const UI_STRINGS = {
     textInputPlaceholder: "Type your answer...",
     sendAria: "Send message",
     preInterviewTitle: "Before we begin...",
-    preInterviewInfoText: "This interview is designed to assess your AI readiness. Please answer the questions in as much detail as possible so that your learning journey can be optimally tailored to you later.\n\nAll data is processed anonymously and used exclusively for your personal learning journey.",
-    preInterviewConfirmation: "I have read and confirm this.",
+    preInterviewInfoText: "This interview is designed to assess your AI readiness and will take approximately 15 minutes. Please answer the questions in as much detail as possible so that your learning journey can be optimally tailored to you later.\n\nAll data is processed anonymously and used exclusively for your personal learning journey.",
+    preInterviewConfirmation: "I have read and confirm the information above.",
     preInterviewSettingsTitle: "Preferences",
     preInterviewModeTitle: "Interview Mode",
-    preInterviewModeVoice: "Voice",
-    preInterviewModeText: "Chat",
+    preInterviewModeVoice: "Voice Interview",
+    preInterviewModeText: "Text Chat",
     preInterviewStart: "Start Interview!",
   },
   de: {
     headerTitle: "AI Readiness Check",
-    headerSubtitle: "Ihr persönlicher Berater zur KI-Bereitschaft",
+    headerSubtitle: "Dein persönlicher KI-Bereitschafts-Check",
     welcomeTitle: "Willkommen!",
-    welcomeText: "Klicken Sie auf den Button, um Ihren AI Readiness Check zu starten. Sie können Ihre Stimme verwenden oder Ihre Antworten tippen.",
+    welcomeText: "Klicke auf den Button, um deinen AI Readiness Check zu starten. Dieses Interview wird ungefähr 15 Minuten dauern. Du kannst deine Stimme verwenden oder deine Antworten tippen.",
     startCheck: "Check starten",
+    continueCheck: "Check fortsetzen",
+    startNewCheck: "Neuen Check starten",
     connecting: "Verbinde...",
-    connectingText: "Der KI-Assistent bereitet Ihren Check vor. Dies dauert nur einen Moment.",
+    connectingText: "Der KI-Assistent bereitet deinen Check vor. Dies dauert nur einen Moment.",
     statusInProgress: "Check läuft...",
-    statusPaused: "Interview Pausiert",
+    statusPaused: "Check pausiert",
     statusMuted: "Audio stummgeschaltet.",
     statusMicrophoneMuted: "Mikrofon stummgeschaltet.",
     statusSpeakerMuted: "Lautsprecher stummgeschaltet.",
     statusEnding: "Check wird beendet...",
     statusTextInput: "Texteingabe aktiv",
-    errorText: "Ein Fehler ist aufgetreten. Bitte laden Sie die Seite neu und versuchen Sie es erneut.",
+    errorText: "Ein Fehler ist aufgetreten. Bitte lade die Seite neu und versuche es erneut.",
     quotaErrorTitle: "Kontingent überschritten",
-    quotaErrorText: "Es scheint, als wäre das API-Nutzungslimit erreicht. Um diese Funktion weiterhin zu nutzen, stellen Sie bitte sicher, dass die Abrechnung für Ihr Google Cloud-Projekt aktiviert ist.",
+    quotaErrorText: "Es scheint, als wäre das API-Nutzungslimit erreicht. Um diese Funktion weiterhin zu nutzen, stelle bitte sicher, dass die Abrechnung für dein Google Cloud-Projekt aktiviert ist.",
     quotaErrorLink: "Mehr über die Abrechnung erfahren",
     finishedText: "Check beendet. Vielen Dank!",
     pauseCheckAria: "Interview pausieren",
@@ -73,15 +78,15 @@ const UI_STRINGS = {
     unmuteSpeakerAria: "Lautsprecher aktivieren",
     switchToTextModeAria: "Auf Texteingabe wechseln",
     switchToVoiceModeAria: "Auf Spracheingabe wechseln",
-    textInputPlaceholder: "Geben Sie Ihre Antwort ein...",
+    textInputPlaceholder: "Gib deine Antwort ein...",
     sendAria: "Nachricht senden",
     preInterviewTitle: "Bevor wir beginnen...",
-    preInterviewInfoText: "Dieses Interview dient dazu, deine AI-Readiness einzuschätzen. Bitte beantworte die Fragen möglichst detailliert, damit deine Learning Journey später optimal auf dich zugeschnitten werden kann.\n\nAlle Daten werden anonym verarbeitet und ausschließlich für deine persönliche Learning Journey genutzt.",
-    preInterviewConfirmation: "Ich habe das gelesen und bestätige das.",
+    preInterviewInfoText: "Dieses Interview dient dazu, deine AI-Readiness einzuschätzen und dauert etwa 15 Minuten. Bitte beantworte die Fragen möglichst detailliert, damit deine Learning Journey später optimal auf dich zugeschnitten werden kann.\n\nAlle Daten werden anonym verarbeitet und ausschließlich für deine persönliche Learning Journey genutzt.",
+    preInterviewConfirmation: "Ich habe dies gelesen und bestätige es.",
     preInterviewSettingsTitle: "Voreinstellungen",
     preInterviewModeTitle: "Interview-Modus",
-    preInterviewModeVoice: "Voice-Fenster",
-    preInterviewModeText: "Chatfenster",
+    preInterviewModeVoice: "Per Sprache",
+    preInterviewModeText: "Per Text",
     preInterviewStart: "Interview starten!",
   },
 };
@@ -95,16 +100,27 @@ const Header: React.FC<{ T: typeof UI_STRINGS['en'] }> = ({ T }) => (
   </header>
 );
 
-const WelcomeScreen: React.FC<{ onStart: () => void; state: InterviewState; T: typeof UI_STRINGS['en'] }> = ({ onStart, state, T }) => (
+const WelcomeScreen: React.FC<{ 
+  onContinue: () => void;
+  onStartNew: () => void;
+  hasSavedSession: boolean;
+  state: InterviewState; 
+  T: typeof UI_STRINGS['en'];
+}> = ({ onContinue, onStartNew, hasSavedSession, state, T }) => (
   <div className="text-center flex flex-col items-center justify-center h-full p-4 sm:p-8">
     <div className="text-5xl md:text-6xl text-blue-500 mb-4">
       <i className="fa-regular fa-face-smile"></i>
     </div>
     <h2 className="text-2xl font-semibold text-gray-800 mb-2">{T.welcomeTitle}</h2>
     <p className="text-gray-600 max-w-md">{T.welcomeText}</p>
-    <div className="mt-12 md:mt-16">
-      <MainControlButton onClick={onStart} state={state} T={T} />
-      <p className="mt-4 text-gray-700 font-medium">{T.startCheck}</p>
+    <div className="mt-12 md:mt-16 flex flex-col items-center">
+      <MainControlButton onClick={onContinue} state={state} T={T} />
+      <p className="mt-4 text-gray-700 font-medium">{hasSavedSession ? T.continueCheck : T.startCheck}</p>
+      {hasSavedSession && (
+         <button onClick={onStartNew} className="mt-4 text-sm text-gray-500 hover:text-blue-600 underline transition-colors">
+          {T.startNewCheck}
+        </button>
+      )}
     </div>
   </div>
 );
@@ -201,14 +217,14 @@ const PreInterviewScreen: React.FC<{
   );
 };
 
-
 const LoadingScreen: React.FC<{ T: typeof UI_STRINGS['en'] }> = ({ T }) => (
-  <div className="text-center flex flex-col items-center justify-center h-full p-4 sm:p-8">
-    <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-6"></div>
-    <h2 className="text-xl font-semibold text-gray-800">{T.connecting}</h2>
-    <p className="text-gray-600 mt-2 max-w-xs">{T.connectingText}</p>
+  <div className="flex flex-col items-center justify-center h-full text-center p-4">
+    <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mb-6"></div>
+    <h2 className="text-2xl font-semibold text-gray-800 mb-2">{T.connecting}</h2>
+    <p className="text-gray-600 max-w-xs">{T.connectingText}</p>
   </div>
 );
+
 
 const QuotaErrorScreen: React.FC<{ T: typeof UI_STRINGS['en'] }> = ({ T }) => (
   <div className="text-center flex flex-col items-center justify-center h-full p-4 sm:p-8">
@@ -272,8 +288,9 @@ const InterviewScreen: React.FC<{
   }, []);
 
   const getStatusText = () => {
+    if (state === InterviewState.STARTING) return T.connecting;
     if (inputMode === 'text') return T.statusTextInput;
-    if (isPaused) return T.statusPaused.replace("Interview Pausiert", "Check pausiert.");
+    if (isPaused) return T.statusPaused;
     if (state === InterviewState.IN_PROGRESS) return T.statusInProgress;
     if (state === InterviewState.ENDING) return T.statusEnding;
     return "";
@@ -289,8 +306,8 @@ const InterviewScreen: React.FC<{
           {transcripts.map((t, i) => (
             <div key={i} className={`flex items-start gap-2 sm:gap-3 ${t.source === 'user' ? 'justify-end' : ''}`}>
               {t.source === 'ai' && (
-                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white flex-shrink-0">
-                  <i className="fa-solid fa-robot text-sm"></i>
+                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white flex-shrink-0 font-bold text-lg">
+                  N
                 </div>
               )}
               <div className={`p-3 rounded-lg max-w-[85%] sm:max-w-lg ${t.source === 'user' ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}>
@@ -334,16 +351,17 @@ const InterviewScreen: React.FC<{
                     </button>
                 </div>
             </div>
-             <p className="mt-4 text-gray-700 font-medium h-6">
+             <p className="mt-4 text-gray-700 font-medium h-6 flex items-center justify-center gap-2">
+                {state === InterviewState.STARTING && <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500"></div>}
                 {getStatusText()}
             </p>
           </div>
         ) : (
           <form onSubmit={onSendText} className="w-full flex items-center gap-2">
-            <button type="button" onClick={onToggleSpeakerMute} disabled={isPaused} aria-label={isSpeakerMuted ? T.unmuteSpeakerAria : T.muteSpeakerAria} className={`${isSpeakerDisplayedAsMuted ? 'text-red-500' : 'text-gray-500'} ${!isPaused && (isSpeakerMuted ? 'hover:text-red-600' : 'hover:text-blue-600')} disabled:opacity-50 transition-colors w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full flex-shrink-0`}>
+            <button type="button" onClick={onToggleSpeakerMute} disabled={isPaused || state === InterviewState.STARTING} aria-label={isSpeakerMuted ? T.unmuteSpeakerAria : T.muteSpeakerAria} className={`${isSpeakerDisplayedAsMuted ? 'text-red-500' : 'text-gray-500'} ${!isPaused && (isSpeakerMuted ? 'hover:text-red-600' : 'hover:text-blue-600')} disabled:opacity-50 transition-colors w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full flex-shrink-0`}>
                 <i className={`fa-solid ${isSpeakerDisplayedAsMuted ? 'fa-volume-xmark' : 'fa-volume-high'} text-lg sm:text-xl`}></i>
             </button>
-            <button type="button" onClick={onSwitchToVoice} disabled={isPaused} aria-label={T.switchToVoiceModeAria} className="text-gray-500 hover:text-blue-600 disabled:opacity-50 transition-colors w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full flex-shrink-0">
+            <button type="button" onClick={onSwitchToVoice} disabled={isPaused || state === InterviewState.STARTING} aria-label={T.switchToVoiceModeAria} className="text-gray-500 hover:text-blue-600 disabled:opacity-50 transition-colors w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full flex-shrink-0">
                 <i className="fa-solid fa-comment text-lg sm:text-xl"></i>
             </button>
             {(state === InterviewState.PAUSED || state === InterviewState.IN_PROGRESS) &&
@@ -355,11 +373,12 @@ const InterviewScreen: React.FC<{
               type="text"
               value={textInputValue}
               onChange={onTextInputChange}
-              placeholder={T.textInputPlaceholder}
+              placeholder={state === InterviewState.STARTING ? T.connecting : T.textInputPlaceholder}
               className="flex-grow min-w-0 border border-gray-300 rounded-full h-10 sm:h-12 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               aria-label={T.textInputPlaceholder}
+              disabled={state === InterviewState.STARTING}
             />
-            <button type="submit" disabled={!textInputValue.trim() || state === InterviewState.PAUSED} aria-label={T.sendAria} className="bg-blue-500 text-white rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center flex-shrink-0 disabled:bg-gray-400 transition-colors">
+            <button type="submit" disabled={!textInputValue.trim() || state === InterviewState.PAUSED || state === InterviewState.STARTING} aria-label={T.sendAria} className="bg-blue-500 text-white rounded-full w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center flex-shrink-0 disabled:bg-gray-400 transition-colors">
               <i className="fa-solid fa-paper-plane text-sm sm:text-base"></i>
             </button>
           </form>
@@ -417,8 +436,30 @@ const App: React.FC = () => {
   const [hasConfirmed, setHasConfirmed] = useState(false);
   const userTranscriptRef = useRef<string>('');
   const aiTranscriptRef = useRef<string>('');
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const LOCAL_STORAGE_KEY = 'aiReadinessCheckSession';
   
+  const stopMediaStream = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
+    try {
+      const savedSession = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedSession) {
+        const savedTranscripts: Transcript[] = JSON.parse(savedSession);
+        if (savedTranscripts && savedTranscripts.length > 0) {
+          setTranscripts(savedTranscripts);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load session from localStorage", error);
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+    
     const params = new URLSearchParams(window.location.search);
     const lang = params.get('lang');
     if (lang === 'de') {
@@ -429,6 +470,27 @@ const App: React.FC = () => {
       document.documentElement.lang = 'en';
     }
   }, []);
+  
+  useEffect(() => {
+    if (interviewState === InterviewState.PRE_INTERVIEW && inputMode === 'voice') {
+      if (!mediaStreamRef.current) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            if (interviewState === InterviewState.PRE_INTERVIEW && inputMode === 'voice') {
+                mediaStreamRef.current = stream;
+            } else {
+                stream.getTracks().forEach(track => track.stop());
+            }
+          })
+          .catch(err => {
+            console.error("Pre-emptive microphone access failed:", err);
+          });
+      }
+    } else {
+      stopMediaStream();
+    }
+    return () => stopMediaStream();
+  }, [interviewState, inputMode, stopMediaStream]);
 
   const T = UI_STRINGS[language];
   
@@ -441,13 +503,16 @@ const App: React.FC = () => {
     setTextInputValue('');
     setErrorMessage(null);
     setHasConfirmed(false);
-  }, []);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    stopMediaStream();
+  }, [stopMediaStream]);
 
   const handleStateChange = useCallback((newState: InterviewState) => {
     if (newState === InterviewState.ERROR) return;
 
     setInterviewState(newState);
     if (newState === InterviewState.FINISHED) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
       setTimeout(resetState, 3000);
     }
   }, [resetState]);
@@ -487,6 +552,14 @@ const App: React.FC = () => {
       if(isFinal) {
         if(source === 'user') userTranscriptRef.current = '';
         else aiTranscriptRef.current = '';
+      }
+
+      if (isFinal && newTranscripts.length > 0) {
+        try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newTranscripts));
+        } catch (error) {
+            console.error("Failed to save session to localStorage", error);
+        }
       }
 
       return newTranscripts;
@@ -567,6 +640,24 @@ const App: React.FC = () => {
     }
   };
 
+  const handleStartNew = useCallback(() => {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setTranscripts([]);
+    setHasConfirmed(false);
+    setInterviewState(InterviewState.PRE_INTERVIEW);
+  }, []);
+
+  const handleStartInterview = useCallback(() => {
+    const stream = mediaStreamRef.current;
+    mediaStreamRef.current = null; // Hand off the stream
+    startSession({
+        initialMicMuted: isMicrophoneMuted,
+        initialSpeakerMuted: isSpeakerMuted,
+        history: transcripts,
+        prefetchedStream: stream,
+    });
+  }, [startSession, isMicrophoneMuted, isSpeakerMuted, transcripts]);
+
 
   const renderContent = () => {
     if (interviewState === InterviewState.ERROR) {
@@ -580,13 +671,19 @@ const App: React.FC = () => {
     }
 
     if (interviewState === InterviewState.NOT_STARTED) {
-      return <WelcomeScreen onStart={() => setInterviewState(InterviewState.PRE_INTERVIEW)} state={interviewState} T={T} />;
+      return <WelcomeScreen 
+        onContinue={() => setInterviewState(InterviewState.PRE_INTERVIEW)} 
+        onStartNew={handleStartNew}
+        hasSavedSession={transcripts.length > 0}
+        state={interviewState} 
+        T={T} 
+        />;
     }
 
     if (interviewState === InterviewState.PRE_INTERVIEW) {
       return <PreInterviewScreen
         T={T}
-        onStart={() => startSession({ initialMicMuted: isMicrophoneMuted, initialSpeakerMuted: isSpeakerMuted })}
+        onStart={handleStartInterview}
         hasConfirmed={hasConfirmed}
         onConfirmChange={(e) => setHasConfirmed(e.target.checked)}
         inputMode={inputMode}
@@ -597,11 +694,12 @@ const App: React.FC = () => {
         onToggleMicrophoneMute={() => { if(inputMode === 'voice') { setIsMicrophoneMuted(p => !p) }}}
         />
     }
-    
-    if (interviewState === InterviewState.STARTING) {
-        return <LoadingScreen T={T} />;
-    }
 
+    if (interviewState === InterviewState.STARTING) {
+      return <LoadingScreen T={T} />;
+    }
+    
+    // Any state after STARTING (IN_PROGRESS, PAUSED, etc.) will render the interview
     return <InterviewScreen
       transcripts={transcripts}
       state={interviewState}
